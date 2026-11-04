@@ -1,0 +1,7 @@
+CLAUDE.md
+.claude/
+.DS_Store
+n8n_data/
+.env
+*.env
+*credentials*
