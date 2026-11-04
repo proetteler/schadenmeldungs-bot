@@ -72,3 +72,7 @@ Die gespeicherten Ausführungen zeigen die Ursache: Die Typen in Prompt und Pars
 - Nach einer Format-Änderung muss mit einer neuen `sessionId` getestet werden. Das Memory enthält sonst alte
   Antworten im alten Format, und das Modell orientiert sich daran.
 - Ungültiges JSON zählt in der Evaluation als Fehler, auch wenn der Fallback den Dialog rettet.
+- Das Ausgabelimit im Chat Model ist bewusst auf **1024 Tokens** gesetzt. Eine Antwort braucht etwa 150 bis
+  300 Tokens, das Limit lässt Luft für die Zusammenfassung bei `bestaetigen` und deckelt Kosten und
+  Antwortzeit. Wird es erreicht, bricht das JSON ab und der Fallback übernimmt. Getestet mit einem Limit von
+  5 Tokens.
