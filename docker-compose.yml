@@ -7,5 +7,9 @@ services:
     environment:
       - GENERIC_TIMEZONE=Europe/Zurich
       - TZ=Europe/Zurich
+      # n8n läuft im Container auf 5678, ist von aussen aber über 5679 erreichbar.
+      # Ohne diese Angaben erzeugt n8n Chat- und Webhook-URLs mit dem falschen Port.
+      - N8N_EDITOR_BASE_URL=http://localhost:5679/
+      - N8N_WEBHOOK_URL=http://localhost:5679/
     volumes:
       - ./n8n_data:/home/node/.n8n
