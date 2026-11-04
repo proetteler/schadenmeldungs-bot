@@ -56,7 +56,7 @@ flowchart LR
 
 | Bereich | Stand |
 |---|---|
-| Bot-Kern mit System-Prompt v1, JSON-Ausgabe, Status-Prüfung, Fallback | ✅ läuft, von Hand getestet inkl. Fehlerpfade |
+| Bot-Kern mit System-Prompt v1, JSON-Ausgabe, Status-Prüfung, Fallback | ✅ läuft, 5 Dialog- und 4 Fehlerpfad-Tests ([Protokoll](tests/handtests-prompt-v1.md)) |
 | Chat-Kanal mit Fehlerbehandlung | ✅ läuft |
 | Übergabe-Webhook (strukturiertes JSON an das Contact Center) | 🟡 als Nächstes |
 | PII-Maskierung (Telefon, IBAN) vor dem LLM, Demaskierung vor der Übergabe | ⚪ geplant |
@@ -75,8 +75,14 @@ Modellvergleich Haiku gegen Sonnet · Voice.
   Modell aus `HR-123456` stillschweigend `123456`. Inhalte müssen separat geprüft werden.
 - **Der Fallback ist kein Theoriefall.** In rund einem Dutzend Testnachrichten lieferte das Modell zweimal
   zufällig ein kaputtes Format. Die Fehlerquote wird in der Evaluation gemessen.
-- **Hilfsbereite Erfindungen.** Prompt v1 verspricht ungefragt «Ein Mitarbeiter wird sich melden» und
-  übernimmt «gestern» als Datum. Beides sind Testfälle für Prompt v2.
+- **Hilfsbereite Erfindungen.** Prompt v1 verspricht ungefragt «Ein Mitarbeiter wird sich melden», übernimmt
+  «gestern» als Datum und ergänzt im Slot `ursache` ein Detail, das der Kunde nie genannt hat. Der Text an den
+  Kunden war dabei korrekt, der Fehler steckte nur in den Daten für den Fachbereich.
+- **Guardrails brauchen konkrete Kriterien.** «Notfall» stand nur als Wort im Prompt. Ein vom Sturm
+  zerbrochenes Fenster wurde darum nicht als Notfall erkannt.
+
+Alle Dialog- und Fehlerpfad-Tests mit Ergebnissen: [Handtests Prompt v1](tests/handtests-prompt-v1.md).
+Diese Fälle werden die Grundlage der automatischen Evaluation.
 
 ## Setup
 
@@ -101,4 +107,5 @@ docker compose up -d
 | `prompts/` | System-Prompts |
 | `workflows/` | exportierte n8n-Workflows (ohne Credentials) |
 | `code-nodes/` | JavaScript der Code-Nodes |
+| `tests/` | Testprotokolle und Testfälle |
 | `docs/adr/` | Architekturentscheidungen |
