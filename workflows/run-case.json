@@ -1,0 +1,451 @@
+{
+  "name": "Run Case",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "7b8f102d-70d6-4dbb-9f28-452c0dfd3299",
+      "name": "Run Case Input"
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code-Node «Build Simulator Prompt» im Workflow Run Case (Mode: Run Once for All Items).\n// Baut aus dem Testfall und den bisherigen Runden den Auftrag an den Kunden-Simulator.\n// Der Dialog liegt in der Data Table eval_turns, weil LLM-Nodes in der Schleife keine Daten weiterreichen.\n\nconst input = $('Run Case Input').first().json;\nconst testCase = input.testfall;\n\n// Load Turns liefert bei einer neuen Session ein leeres Item (Always Output Data). Das zählt nicht als Runde.\nconst turns = $('Load Turns').all()\n  .map(item => item.json)\n  .filter(turn => turn.session_id)\n  .sort((a, b) => Number(a.runde) - Number(b.runde));\n\nconst facts = Object.entries(testCase.fakten)\n  .map(([name, value]) => `- ${name}: ${value}`)\n  .join('\\n');\n\nconst dialog = turns.length === 0\n  ? '(Noch keine Nachrichten. Du beginnst das Gespräch.)'\n  : turns.map(turn => `Kunde: ${turn.kunde}\\nBot: ${turn.bot}`).join('\\n\\n');\n\nconst prompt = `Du spielst eine Kundin oder einen Kunden der Muster Versicherung, der einen Glasbruch meldet.\nDu testest einen Chatbot. Schreib nur deine nächste Nachricht an den Bot, ohne Anführungszeichen und ohne Erklärung.\n\nREGELN\n- Kurz und natürlich, Schweizer Rechtschreibung (ss statt ß).\n- Nenne nur Fakten aus deiner Liste. Fragt der Bot nach etwas anderem, sag, dass du es nicht weisst.\n- Zeigt der Bot eine Zusammenfassung und stimmt sie mit deinen Fakten überein, antworte nur: ja\n- Stimmt etwas in der Zusammenfassung nicht, korrigiere es.\n\nDEIN VERHALTEN\n${testCase.kunde}\n\nDEINE FAKTEN\n${facts}\n\nBISHERIGER DIALOG\n${dialog}`;\n\nreturn [{\n  json: {\n    sessionId: input.sessionId,\n    runde: turns.length + 1,\n    prompt,\n  },\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        0
+      ],
+      "id": "37621a8f-be66-4b26-a6ac-44789accad74",
+      "name": "Build Simulator Prompt"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.prompt }}",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        672,
+        0
+      ],
+      "id": "ff91514f-4643-47b9-9fee-58de5613173d",
+      "name": "Customer Simulator"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "claude-haiku-5-5",
+          "mode": "list",
+          "cachedResultName": "Claude Haiku 5.5"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.5,
+      "position": [
+        688,
+        192
+      ],
+      "id": "e690733b-14b7-46cf-b84e-a1c873c354f6",
+      "name": "Simulator Model",
+      "credentials": {
+        "anthropicApi": {
+          "id": "mg4mFNpAt5ryUcsZ",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "PsdFD8YOxKA6gU7T",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/PsdFD8YOxKA6gU7T",
+          "cachedResultName": "Bot Core"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "sessionId": "={{ $('Build Simulator Prompt').item.json.sessionId }}",
+            "chatInput": "={{ $json.text }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "sessionId",
+              "displayName": "sessionId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "chatInput",
+              "displayName": "chatInput",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        992,
+        0
+      ],
+      "id": "8e87e99b-628a-43f7-869e-8d1835a49405",
+      "name": "Call Bot Core"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "deb932eb-543d-42ef-8420-3eac9e1d2232",
+              "leftValue": "={{ $('Call Bot Core').item.json.status }}",
+              "rightValue": "abgeschlossen",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            },
+            {
+              "id": "8dbf739a-5cd4-4d9e-9c86-a2780c5706b5",
+              "leftValue": "={{ $('Call Bot Core').item.json.status }}",
+              "rightValue": "uebergabe",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            },
+            {
+              "id": "96696e88-624b-4aeb-b4cf-88218d5d41a0",
+              "leftValue": "={{ $('Build Simulator Prompt').item.json.runde }}",
+              "rightValue": 10,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1392,
+        0
+      ],
+      "id": "a487df29-8976-45da-aa74-e96c0096d287",
+      "name": "Case Finished?"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "LGgGgm7LhZqDluQU",
+          "mode": "list",
+          "cachedResultName": "eval_turns",
+          "cachedResultUrl": "/projects/STRj0MskD9v97Vty/datatables/LGgGgm7LhZqDluQU"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "session_id",
+              "keyValue": "={{ $('Run Case Input').first().json.sessionId }}"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        224,
+        0
+      ],
+      "id": "cc528c93-c778-424f-baac-a25ce855d1eb",
+      "name": "Load Turns",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "value": "LGgGgm7LhZqDluQU",
+          "mode": "list",
+          "cachedResultName": "eval_turns",
+          "cachedResultUrl": "/projects/STRj0MskD9v97Vty/datatables/LGgGgm7LhZqDluQU"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "session_id": "={{ $('Build Simulator Prompt').item.json.sessionId }}",
+            "runde": "={{ $('Build Simulator Prompt').item.json.runde }}",
+            "kunde": "={{ $('Customer Simulator').item.json.text }}",
+            "bot": "={{ $json.antwort }}",
+            "status": "={{ $json.status }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "session_id",
+              "displayName": "session_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "runde",
+              "displayName": "runde",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "kunde",
+              "displayName": "kunde",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "bot",
+              "displayName": "bot",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1168,
+        0
+      ],
+      "id": "3483715e-bb75-4045-b8d2-74d727ec557f",
+      "name": "Save Turn"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e431c5ae-2e6b-43da-b7a6-2991e64f76c2",
+              "name": "fall",
+              "value": "={{ $('Run Case Input').first().json.testfall.fall }}",
+              "type": "string"
+            },
+            {
+              "id": "0ce49887-628b-42de-b560-4ff11f9a81b2",
+              "name": "sessionId",
+              "value": "={{ $('Build Simulator Prompt').item.json.sessionId }}",
+              "type": "string"
+            },
+            {
+              "id": "2fd186a9-622d-4a39-b8b1-7ebe0616caf1",
+              "name": "status",
+              "value": "={{ $('Call Bot Core').item.json.status }}",
+              "type": "string"
+            },
+            {
+              "id": "cb606df0-a409-4880-ad4d-19c5de5d5959",
+              "name": "slots",
+              "value": "={{ $('Call Bot Core').item.json.slots }}",
+              "type": "object"
+            },
+            {
+              "id": "98c98bbd-620d-4d63-bc45-9c57e666b77a",
+              "name": "runden",
+              "value": "={{ $('Build Simulator Prompt').item.json.runde }}",
+              "type": "number"
+            },
+            {
+              "id": "50c3c5dd-d445-449c-b388-bbeeffc7ea3b",
+              "name": "uebergabe_gesendet",
+              "value": "={{ $('Call Bot Core').item.json.uebergabe_gesendet ?? false }}",
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        1616,
+        -96
+      ],
+      "id": "85d9a5c4-e227-4968-abae-44654d02fc8d",
+      "name": "Run Case Output"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Run Case Input": {
+      "main": [
+        [
+          {
+            "node": "Load Turns",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Simulator Prompt": {
+      "main": [
+        [
+          {
+            "node": "Customer Simulator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simulator Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Customer Simulator",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Customer Simulator": {
+      "main": [
+        [
+          {
+            "node": "Call Bot Core",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Bot Core": {
+      "main": [
+        [
+          {
+            "node": "Save Turn",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Turns": {
+      "main": [
+        [
+          {
+            "node": "Build Simulator Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Turn": {
+      "main": [
+        [
+          {
+            "node": "Case Finished?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Case Finished?": {
+      "main": [
+        [
+          {
+            "node": "Run Case Output",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Load Turns",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "e4a87a3c-6b1f-40aa-a0ec-4c0c7e227e1b",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "id": "9mENIjuTy3fhzZ7j",
+  "tags": []
+}

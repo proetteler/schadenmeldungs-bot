@@ -55,6 +55,25 @@ flowchart LR
   SH -- POST JSON --> WH
 ```
 
+**Evaluation** ([ADR 0005](docs/adr/0005-evaluation.md)): Ein Kunden-Simulator spielt jeden Testfall gegen den
+unveränderten Bot Core durch. Danach prüft Code, was sich exakt prüfen lässt, und ein Judge-Modell den Rest.
+
+```mermaid
+flowchart LR
+  subgraph EV[Workflow Evaluation]
+    TC[Test Cases<br/>6 Fälle] --> RC[Run Case<br/>pro Fall]
+    RC --> CK[Check Results<br/>Status, Slots, Übergabe]
+    CK --> JG[Judge<br/>5 Kriterien mit Begründung]
+    JG --> SR[Save Result<br/>eval_runs]
+  end
+  subgraph RCW[Workflow Run Case]
+    SIM[Customer Simulator] --> BOT[Bot Core]
+    BOT --> TURN[Save Turn<br/>eval_turns]
+    TURN -- noch nicht fertig --> SIM
+  end
+  RC --> SIM
+```
+
 - **Chat** ist nur der Kanal. Die Logik steckt im Sub-Workflow **Bot Core**, damit ihn später auch ein
   Kunden-Simulator für die Evaluation aufrufen kann.
 - **Bot Core** hat genau einen Ein- und einen Ausgang: rein `sessionId` und `chatInput`, raus immer
@@ -76,7 +95,12 @@ flowchart LR
 | Chat-Kanal mit Fehlerbehandlung | ✅ läuft |
 | Übergabe-Webhook mit Header Auth, Speicherung in einer Data Table | ✅ läuft, 3 Webhook- und 3 Übergabe-Tests ([Protokoll](tests/handtests-handover.md)) |
 | PII-Maskierung (Telefon, IBAN) vor dem LLM, Demaskierung für Kunde und Übergabe | ✅ läuft, 17 automatische und 3 Chat-Tests ([Protokoll](tests/handtests-pii.md)) |
-| Evaluation: Testfälle, LLM-as-a-Judge, Vergleich Prompt v1 gegen v2 | ⚪ geplant |
+| Evaluation: 6 Testfälle mit Kunden-Simulator, Prüfung in Code, LLM-as-a-Judge | ✅ Lauf v1 ([Ergebnis](tests/eval-v1.md), [ADR 0005](docs/adr/0005-evaluation.md)) |
+| Kalibrierung des Judge, Prompt v2, Lauf v2 im Vergleich | 🔜 nächster Schritt |
+
+**Ergebnis Lauf v1:** Endstatus 6/6 und Übergabe 6/6 richtig, die Prompt Injection wurde abgewehrt. Aber der Bot
+machte in **allen 6 Fällen eine Zusage**, die er nicht einhalten kann («Ein Mitarbeiter wird sich melden»), und
+speicherte das Datum nie im verlangten Format. Beides geht Prompt v2 an.
 
 **Später:** Slots pro Session speichern, damit auch eine Übergabe nach einem technischen Fehler die Angaben
 enthält · Queue mit Wiederholung
@@ -111,13 +135,20 @@ Modellvergleich Haiku gegen Sonnet · Voice.
 - **Was das LLM entscheidet, muss nicht stimmen.** Der Bot schloss eine Meldung ohne Policennummer ab und
   erfand dafür die Regel «später nachreichen». Seitdem prüft Validate Status die Pflichtangaben und übergibt
   an einen Menschen, wenn etwas fehlt.
+- **Was Handtests übersehen, findet die Evaluation.** Die Zusage «Wir melden uns» fiel im Chat einmal auf. Erst der
+  Lauf über alle Fälle zeigte, dass sie in jedem Fall kommt, also ein Muster des Prompts ist und kein Zufall.
+- **Auch Simulator und Judge sind LLMs.** Der Simulator liess in einem Fall genau die Frage weg, die getestet werden
+  sollte. Der Judge wertete eine korrekte Übergabe als Fehler. Ein grünes Ergebnis heisst darum nicht automatisch
+  «getestet», und Judge-Urteile müssen kalibriert werden.
+- **Die Plattform bestimmt die Modellwahl mit.** Sonnet 5.5 lehnt den Thinking-Parameter ab, den der n8n-Node
+  schickt. Der Judge läuft darum auf Sonnet 5.
 - **Maskieren schützt vor dem Anbieter, nicht vor den eigenen Logs.** Claude sieht nur `[TEL_1]`, die
   n8n-Executions enthalten die Nummer aber weiterhin.
 
 Alle Tests mit Ergebnissen: [Handtests Prompt v1](tests/handtests-prompt-v1.md),
 [Handtests Übergabe](tests/handtests-handover.md), [Tests PII-Maskierung](tests/handtests-pii.md) und
-[Tests Pflichtangaben-Check](tests/handtests-validate-status.md).
-Diese Fälle werden die Grundlage der automatischen Evaluation.
+[Tests Pflichtangaben-Check](tests/handtests-validate-status.md) und [Evaluation Lauf v1](tests/eval-v1.md).
+Aus diesen Handtests sind die Fälle der automatischen Evaluation entstanden.
 
 ## Setup
 
@@ -132,19 +163,29 @@ docker compose up -d
    - **Anthropic** mit dem API-Key
    - **Header Auth** mit Name `X-Handover-Token` und einem zufälligen Wert, zum Beispiel aus
      `openssl rand -hex 32`
-3. Zwei Data Tables anlegen, alle Spalten vom Typ String:
+3. Vier Data Tables anlegen, alle Spalten vom Typ String:
    - `handovers` mit `typ`, `session_id`, `grund`, `slots`, `zeitpunkt`, `kanal`
    - `pii_mappings` mit `session_id`, `mapping`
-4. `workflows/handover.json`, `workflows/bot-core.json` und `workflows/chat.json` importieren.
+   - `eval_turns` mit `session_id`, `runde`, `kunde`, `bot`, `status`
+   - `eval_runs` mit `lauf`, `fall`, `session_id`, `zeitpunkt`, `status`, `status_ok`, `slots_ok`, `slots_falsch`,
+     `uebergabe_ok`, `runden`, `judge`, `judge_bestanden`, `judge_nicht_erfuellt`
+4. `workflows/handover.json`, `workflows/bot-core.json`, `workflows/chat.json`, `workflows/run-case.json` und
+   `workflows/evaluation.json` importieren.
 5. Credentials und Verweise neu auswählen, weil sich IDs beim Import ändern:
    - Handover: **Handover Webhook** (Header Auth) und **Store Handover** (Data Table)
    - Bot Core: **Claude Model** und **Format Fix Model** (Anthropic), **Send Handover** (Header Auth), **Load PII Map** und
      **Save PII Map** (Data Table)
    - Chat: **Call Bot Core** (den importierten Bot Core)
+   - Run Case: **Simulator Model** (Anthropic), **Call Bot Core**, **Load Turns** und **Save Turn** (Data Table)
+   - Evaluation: **Judge Model** und **Judge Fix Model** (Anthropic), **Run Case**, **Load Dialog** und
+     **Save Result** (Data Table)
 6. Den Workflow **Handover** publizieren. Ohne das antwortet der Webhook mit 404.
 7. Im Workflow Chat auf **Open chat** klicken.
+8. Evaluation: im Workflow Evaluation in **Run Settings** den Namen des Laufs setzen (zum Beispiel `v1`) und
+   **Execute workflow** klicken. **Case Limit** begrenzt die Anzahl Fälle. Run Case nie direkt starten.
 
-Tests der Code-Nodes ohne n8n, nur mit Node.js: `node tests/pii.test.js` und `node tests/validate-status.test.js`
+Tests der Code-Nodes ohne n8n, nur mit Node.js: `node tests/pii.test.js`, `node tests/validate-status.test.js`,
+`node tests/build-simulator-prompt.test.js`, `node tests/check-results.test.js` und `node tests/judge.test.js`
 
 ## Repo-Struktur
 
