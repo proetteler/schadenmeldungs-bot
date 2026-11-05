@@ -53,6 +53,9 @@
       ],
       "id": "7cc88a7b-9b63-4dc0-9fd0-248e51f85eee",
       "name": "Claims Assistant",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 0,
       "onError": "continueErrorOutput"
     },
     {
@@ -99,7 +102,8 @@
     },
     {
       "parameters": {
-        "jsonSchemaExample": "{\n  \"antwort\": \"Text an den Kunden\",\n  \"status\": \"sammeln\",\n  \"slots\": {\n    \"policennummer\": \"\",\n    \"schadendatum\": \"\",\n    \"objekt\": \"\",\n    \"ursache\": \"\",\n    \"fotos_vorhanden\": \"\",\n    \"rueckruf_telefon\": \"\"\n  },\n  \"uebergabe_grund\": \"\"\n}"
+        "jsonSchemaExample": "{\n  \"antwort\": \"Text an den Kunden\",\n  \"status\": \"sammeln\",\n  \"slots\": {\n    \"policennummer\": \"\",\n    \"schadendatum\": \"\",\n    \"objekt\": \"\",\n    \"ursache\": \"\",\n    \"fotos_vorhanden\": \"\",\n    \"rueckruf_telefon\": \"\"\n  },\n  \"uebergabe_grund\": \"\"\n}",
+        "autoFix": true
       },
       "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
       "typeVersion": 1.3,
@@ -112,7 +116,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// n8n Code-Node «Validate Status» im Workflow Bot Core (Mode: Run Once for All Items).\n// Prüft die Antwort des Claims Assistant und gibt eine flache, einheitliche Struktur weiter.\n// Siehe docs/adr/0002-structured-json-output.md\n\n// Erlaubte Werte für status. Alles andere wird sicherheitshalber zur Übergabe.\nconst ALLOWED = ['sammeln', 'bestaetigen', 'abgeschlossen', 'uebergabe'];\nconst sessionId = $('Bot Core Input').first().json.sessionId;\n\nreturn $input.all().map(item => {\n  const output = item.json.output ?? {};\n  const valid = ALLOWED.includes(output.status);\n\n  return {\n    json: {\n      sessionId,\n      antwort: output.antwort ?? '',\n      status: valid ? output.status : 'uebergabe',\n      slots: output.slots ?? {},\n      uebergabe_grund: valid ? (output.uebergabe_grund ?? '') : `Ungültiger Status vom Modell: ${output.status}`,\n    },\n  };\n});\n"
+        "jsCode": "// n8n Code-Node «Validate Status» im Workflow Bot Core (Mode: Run Once for All Items).\n// Prüft die Antwort des Claims Assistant und gibt eine flache, einheitliche Struktur weiter.\n// Siehe docs/adr/0002-structured-json-output.md\n\n// Erlaubte Werte für status. Alles andere wird sicherheitshalber zur Übergabe.\nconst ALLOWED = ['sammeln', 'bestaetigen', 'abgeschlossen', 'uebergabe'];\n\n// Pflichtangaben für «abgeschlossen»: Slot-Name → Bezeichnung für den Kunden.\nconst REQUIRED = {\n  policennummer: 'Policennummer',\n  schadendatum: 'Schadendatum',\n  objekt: 'Objekt',\n  ursache: 'Ursache',\n  fotos_vorhanden: 'Fotos vorhanden',\n  rueckruf_telefon: 'Rückruf-Telefon',\n};\n\nconst sessionId = $('Bot Core Input').first().json.sessionId;\n\nreturn $input.all().map(item => {\n  const output = item.json.output ?? {};\n  const slots = output.slots ?? {};\n  let status = output.status;\n  let antwort = output.antwort ?? '';\n  let grund = output.uebergabe_grund ?? '';\n\n  if (!ALLOWED.includes(status)) {\n    grund = `Ungültiger Status vom Modell: ${status}`;\n    status = 'uebergabe';\n  }\n\n  // Das LLM darf nicht allein entscheiden, dass alles vorliegt. Fehlt etwas, übernimmt ein Mensch.\n  if (status === 'abgeschlossen') {\n    const missing = Object.keys(REQUIRED).filter(name => String(slots[name] ?? '').trim() === '');\n    if (missing.length > 0) {\n      const labels = missing.map(name => REQUIRED[name]).join(', ');\n      status = 'uebergabe';\n      grund = `Pflichtangaben fehlen: ${missing.join(', ')}`;\n      antwort = `Vielen Dank. Für die Meldung fehlt noch: ${labels}. ` +\n        'Eine Mitarbeiterin oder ein Mitarbeiter übernimmt Ihr Anliegen.';\n    }\n  }\n\n  return {\n    json: { sessionId, antwort, status, slots, uebergabe_grund: grund },\n  };\n});\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -393,6 +397,33 @@
       ],
       "id": "20a45e66-4be7-426a-bfa2-cf9d012defbe",
       "name": "Unmask PII"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "=claude-haiku-5-5",
+          "mode": "id"
+        },
+        "options": {
+          "maxTokensToSample": 1024,
+          "temperature": 0.2
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.5,
+      "position": [
+        736,
+        416
+      ],
+      "id": "69b7706b-7758-4da4-a373-ab95319bec67",
+      "name": "Format Fix Model",
+      "credentials": {
+        "anthropicApi": {
+          "id": "mg4mFNpAt5ryUcsZ",
+          "name": "Anthropic account"
+        }
+      }
     }
   ],
   "pinData": {},
@@ -564,14 +595,25 @@
           }
         ]
       ]
+    },
+    "Format Fix Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Response Format",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
-  "active": false,
+  "active": true,
   "settings": {
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "b0ac9c65-8518-4228-9fae-f72798802441",
+  "versionId": "187663a0-382f-4480-a289-b104272c6465",
   "meta": {
     "templateCredsSetupCompleted": true
   },

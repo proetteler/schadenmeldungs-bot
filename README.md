@@ -20,8 +20,8 @@ werden, der Kunde sich beschwert, ein Notfall vorliegt oder eine Angabe nach zwe
 | Ebene | Umsetzung |
 |---|---|
 | Prompt | klare Rolle, Verbote (keine Aussagen zu Deckung, Zahlung, Fristen; nichts erfinden; keine Umprogrammierung) |
-| Struktur | Antwort nur als JSON nach festem Schema, Routing im Workflow statt im LLM |
-| Code | erlaubte Status-Werte im Code-Node geprüft, im Zweifel Übergabe; Fallback bei technischen Fehlern |
+| Struktur | Antwort nur als JSON nach festem Schema, kaputtes Format wird automatisch korrigiert, Routing im Workflow statt im LLM |
+| Code | erlaubte Status-Werte und Pflichtangaben vor `abgeschlossen` im Code-Node geprüft, im Zweifel Übergabe; Fallback bei technischen Fehlern |
 | Daten | Telefonnummer und IBAN vor dem LLM durch Platzhalter ersetzt, Originale erst nach dem LLM wieder eingesetzt |
 
 ## Architektur
@@ -78,7 +78,8 @@ flowchart LR
 | PII-Maskierung (Telefon, IBAN) vor dem LLM, Demaskierung für Kunde und Übergabe | ✅ läuft, 17 automatische und 3 Chat-Tests ([Protokoll](tests/handtests-pii.md)) |
 | Evaluation: Testfälle, LLM-as-a-Judge, Vergleich Prompt v1 gegen v2 | ⚪ geplant |
 
-**Später:** Vollständigkeit der Pflichtangaben im Code prüfen, bevor `abgeschlossen` gilt · Queue mit Wiederholung
+**Später:** Slots pro Session speichern, damit auch eine Übergabe nach einem technischen Fehler die Angaben
+enthält · Queue mit Wiederholung
 und Alarm für gescheiterte Übergaben · Kanal als Input an den Bot Core · E-Mail, AHV-Nummer, Namen und Adressen
 maskieren (NER statt Regex) · für einen Pilot Postgres statt Data Tables (Gesprächsverlauf, verschlüsseltes
 Mapping, Löschfristen) · Execution-Daten in n8n nur kurz speichern · Inhaltsprüfung der Slots
@@ -94,6 +95,10 @@ Modellvergleich Haiku gegen Sonnet · Voice.
   Modell aus `HR-123456` stillschweigend `123456`. Inhalte müssen separat geprüft werden.
 - **Der Fallback ist kein Theoriefall.** In rund einem Dutzend Testnachrichten lieferte das Modell zweimal
   zufällig ein kaputtes Format. Die Fehlerquote wird in der Evaluation gemessen.
+- **Retry hilft nur bei Zufall.** Bei langen Antworten mit Zusammenfassung schrieb Haiku das JSON als Text
+  mit einer Klammer zu viel. Ein zweiter Versuch mit derselben Eingabe scheiterte genauso. Geholfen hat erst
+  Auto-Fix Format im Output Parser: Ein Modell bekommt die kaputte Ausgabe und die Fehlermeldung und korrigiert
+  nur das Format ([Protokoll](tests/handtests-validate-status.md)).
 - **Hilfsbereite Erfindungen.** Prompt v1 verspricht ungefragt «Ein Mitarbeiter wird sich melden», übernimmt
   «gestern» als Datum und ergänzt im Slot `ursache` ein Detail, das der Kunde nie genannt hat. Der Text an den
   Kunden war dabei korrekt, der Fehler steckte nur in den Daten für den Fachbereich.
@@ -104,12 +109,14 @@ Modellvergleich Haiku gegen Sonnet · Voice.
   Ihr Anliegen weiter», angekommen ist nichts, und niemand hat es bemerkt. Jetzt erfährt der Kunde es, und
   jede Execution zeigt `uebergabe_gesendet`.
 - **Was das LLM entscheidet, muss nicht stimmen.** Der Bot schloss eine Meldung ohne Policennummer ab und
-  erfand dafür die Regel «später nachreichen». Ob alle Pflichtangaben da sind, gehört in den Code.
+  erfand dafür die Regel «später nachreichen». Seitdem prüft Validate Status die Pflichtangaben und übergibt
+  an einen Menschen, wenn etwas fehlt.
 - **Maskieren schützt vor dem Anbieter, nicht vor den eigenen Logs.** Claude sieht nur `[TEL_1]`, die
   n8n-Executions enthalten die Nummer aber weiterhin.
 
 Alle Tests mit Ergebnissen: [Handtests Prompt v1](tests/handtests-prompt-v1.md),
-[Handtests Übergabe](tests/handtests-handover.md) und [Tests PII-Maskierung](tests/handtests-pii.md).
+[Handtests Übergabe](tests/handtests-handover.md), [Tests PII-Maskierung](tests/handtests-pii.md) und
+[Tests Pflichtangaben-Check](tests/handtests-validate-status.md).
 Diese Fälle werden die Grundlage der automatischen Evaluation.
 
 ## Setup
@@ -131,13 +138,13 @@ docker compose up -d
 4. `workflows/handover.json`, `workflows/bot-core.json` und `workflows/chat.json` importieren.
 5. Credentials und Verweise neu auswählen, weil sich IDs beim Import ändern:
    - Handover: **Handover Webhook** (Header Auth) und **Store Handover** (Data Table)
-   - Bot Core: **Claude Model** (Anthropic), **Send Handover** (Header Auth), **Load PII Map** und
+   - Bot Core: **Claude Model** und **Format Fix Model** (Anthropic), **Send Handover** (Header Auth), **Load PII Map** und
      **Save PII Map** (Data Table)
    - Chat: **Call Bot Core** (den importierten Bot Core)
 6. Den Workflow **Handover** publizieren. Ohne das antwortet der Webhook mit 404.
 7. Im Workflow Chat auf **Open chat** klicken.
 
-Tests der Code-Nodes ohne n8n, nur mit Node.js: `node tests/pii.test.js`
+Tests der Code-Nodes ohne n8n, nur mit Node.js: `node tests/pii.test.js` und `node tests/validate-status.test.js`
 
 ## Repo-Struktur
 

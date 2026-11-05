@@ -36,6 +36,6 @@ Jede Zeile in einer neuen Session. Geprüft wurden die Prompts an das LLM in der
 | Finding | Massnahme |
 |---|---|
 | Die Originale stehen weiterhin in den n8n-Executions (Eingabe, Mapping, Ausgabe von Unmask PII). | Grenze dokumentiert (ADR 0004). Produktiv: Speicherung von Execution-Daten einschränken |
-| P2: Status `abgeschlossen`, obwohl die Policennummer fehlt. Der Bot hat selbst entschieden, dass sie «später nachgereicht» werden kann. | Vollständigkeit der Pflichtangaben im Code prüfen, nicht dem LLM überlassen (Roadmap) |
+| P2: Status `abgeschlossen`, obwohl die Policennummer fehlt. Der Bot hat selbst entschieden, dass sie «später nachgereicht» werden kann. | Umgesetzt: Validate Status prüft die Pflichtangaben vor `abgeschlossen`, sonst Übergabe (`node tests/validate-status.test.js`) |
 | P1, P2: `schadendatum` einmal `2026-11-03`, einmal «3. November 2026», einmal «heute». | Datumsformat in Prompt v2 vorgeben |
 | P1, P2: «Wir melden uns unter der angegebenen Rufnummer» | bekannt, feste Abschlussformulierung in Prompt v2 |
