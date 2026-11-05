@@ -70,8 +70,8 @@
       "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
       "typeVersion": 1.5,
       "position": [
-        232,
-        232
+        240,
+        240
       ],
       "id": "d168e4a1-d7f7-455d-954a-6160bad01794",
       "name": "Claude Model",
@@ -91,8 +91,8 @@
       "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
       "typeVersion": 1.4,
       "position": [
-        360,
-        232
+        368,
+        240
       ],
       "id": "e9ebcea2-98ae-409e-a77b-f74ac96311ff",
       "name": "Conversation Memory"
@@ -104,8 +104,8 @@
       "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
       "typeVersion": 1.3,
       "position": [
-        488,
-        232
+        496,
+        240
       ],
       "id": "8e7e269d-a592-4334-82bf-805213916365",
       "name": "Response Format"
@@ -190,11 +190,93 @@
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [
-        1136,
-        0
+        1664,
+        -16
       ],
       "id": "e62de215-9f75-4f8d-a290-9f785a09e8a4",
       "name": "Bot Core Output"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:5678/webhook/handover",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  typ: $json.status,\n  sessionId: $json.sessionId,\n  grund: $json.uebergabe_grund,\n  slots: $json.slots,\n  zeitpunkt: $now.toISO(),\n  kanal: 'chat'\n} }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1184,
+        144
+      ],
+      "id": "c0e1004b-9970-4147-8ff7-bc027686fbb4",
+      "name": "Send Handover",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "VOpUQYGK61nVGdCn",
+          "name": "Handover Token"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "6a64dcf7-f888-4219-8688-ac1fe06a4a64",
+              "name": "sessionId",
+              "value": "={{ $('Continue or Close').item.json.sessionId }}",
+              "type": "string"
+            },
+            {
+              "id": "de124521-0fc4-4214-b914-4c73fdf45f67",
+              "name": "antwort",
+              "value": "={{ $json.error ? 'Entschuldigung, Ihre Meldung konnte gerade nicht übermittelt werden. Bitte versuchen Sie es in ein paar Minuten noch einmal.' : $('Continue or Close').item.json.antwort }}",
+              "type": "string"
+            },
+            {
+              "id": "c14152c1-ede8-4ff8-8eef-f1edabb41a4f",
+              "name": "status",
+              "value": "={{ $('Continue or Close').item.json.status }}",
+              "type": "string"
+            },
+            {
+              "id": "c8e02599-5bd2-4666-8ea0-b7caddc3a4a7",
+              "name": "slots",
+              "value": "={{ $('Continue or Close').item.json.slots }}",
+              "type": "object"
+            },
+            {
+              "id": "1bdbb769-c191-4cd8-b345-f1b454e7e4f4",
+              "name": "uebergabe_grund",
+              "value": "={{ $('Continue or Close').item.json.uebergabe_grund }}",
+              "type": "string"
+            },
+            {
+              "id": "916ac0c5-57d3-4107-a843-793e31c081cd",
+              "name": "uebergabe_gesendet",
+              "value": "={{ !$json.error }}",
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        1408,
+        144
+      ],
+      "id": "2b421511-ac0a-46ee-b35b-aaa3bb58fc5b",
+      "name": "Restore Reply"
     }
   ],
   "pinData": {},
@@ -294,6 +376,28 @@
         ],
         [
           {
+            "node": "Send Handover",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Handover": {
+      "main": [
+        [
+          {
+            "node": "Restore Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restore Reply": {
+      "main": [
+        [
+          {
             "node": "Bot Core Output",
             "type": "main",
             "index": 0
@@ -307,7 +411,7 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "27c02708-e2b1-4264-b94f-26c50e317778",
+  "versionId": "1dc9573a-8103-4ed5-a57f-b0b509bc1af2",
   "meta": {
     "templateCredsSetupCompleted": true
   },

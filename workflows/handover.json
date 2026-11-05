@@ -1,0 +1,177 @@
+{
+  "name": "Handover",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "handover",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "86c8695a-1ce1-492b-9f8a-935330862bda",
+      "name": "Handover Webhook",
+      "webhookId": "1e58613e-81c9-4c30-b757-4e2fcc4d8328",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "VOpUQYGK61nVGdCn",
+          "name": "Handover Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "value": "9qHrd2j9JRvWVkLt",
+          "mode": "list",
+          "cachedResultName": "handovers",
+          "cachedResultUrl": "/projects/STRj0MskD9v97Vty/datatables/9qHrd2j9JRvWVkLt"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "typ": "={{ $json.body.typ }}",
+            "session_id": "={{ $json.body.sessionId }}",
+            "grund": "={{ $json.body.grund }}",
+            "slots": "={{ JSON.stringify($json.body.slots) }}",
+            "zeitpunkt": "={{ $json.body.zeitpunkt }}",
+            "kanal": "={{ $json.body.kanal }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "typ",
+              "displayName": "typ",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "session_id",
+              "displayName": "session_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "grund",
+              "displayName": "grund",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "slots",
+              "displayName": "slots",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "zeitpunkt",
+              "displayName": "zeitpunkt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "kanal",
+              "displayName": "kanal",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        224,
+        0
+      ],
+      "id": "99fe3e3f-d989-4c84-9cc4-10801f122c0a",
+      "name": "Store Handover"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, id: $json.id } }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        448,
+        0
+      ],
+      "id": "181951f1-a9bd-423c-bdf3-4090730bc700",
+      "name": "Respond OK"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Handover Webhook": {
+      "main": [
+        [
+          {
+            "node": "Store Handover",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Handover": {
+      "main": [
+        [
+          {
+            "node": "Respond OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "846891f0-81ea-4c5f-a5f6-7587c61511eb",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "nodeGroups": [],
+  "id": "bUPTYKQHCeDK9YV6",
+  "tags": []
+}

@@ -39,18 +39,29 @@ flowchart LR
     VS --> SW{Continue or Close}
     FH --> SW
     SW -- sammeln / bestaetigen --> OUT[Bot Core Output]
-    SW -- abgeschlossen / uebergabe --> OUT
+    SW -- abgeschlossen / uebergabe --> SH[Send Handover]
+    SH --> RR[Restore Reply]
+    RR --> OUT
+  end
+  subgraph HO[Workflow Handover]
+    WH[Handover Webhook<br/>Header Auth] --> ST[Store Handover<br/>Data Table]
+    ST --> OK[Respond OK]
   end
   CB --> IN
   OUT --> CB
+  SH -- POST JSON --> WH
 ```
 
 - **Chat** ist nur der Kanal. Die Logik steckt im Sub-Workflow **Bot Core**, damit ihn später auch ein
   Kunden-Simulator für die Evaluation aufrufen kann.
 - **Bot Core** hat genau einen Ein- und einen Ausgang: rein `sessionId` und `chatInput`, raus immer
-  `antwort`, `status`, `slots`, `uebergabe_grund`.
-- **Zwei Sicherheitsnetze:** Fallback Handover fängt Fehler im LLM-Aufruf ab (Parser, API, Token-Limit),
-  Chat Error Reply alles andere. Der Kunde sieht nie eine technische Fehlermeldung.
+  `antwort`, `status`, `slots`, `uebergabe_grund`, nach einer Übergabe zusätzlich `uebergabe_gesendet`.
+- **Handover** steht für das Contact Center. Bei `abgeschlossen` und `uebergabe` schickt der Bot Core die
+  Slots als JSON an diesen Webhook, der sie in einer Data Table speichert
+  ([ADR 0003](docs/adr/0003-handover-webhook.md)).
+- **Drei Sicherheitsnetze:** Fallback Handover fängt Fehler im LLM-Aufruf ab (Parser, API, Token-Limit),
+  Restore Reply eine gescheiterte Übergabe, Chat Error Reply alles andere. Der Kunde sieht nie eine technische
+  Fehlermeldung, bekommt aber auch keine Zusage, die nicht eingehalten wurde.
 
 ## Status und Roadmap
 
@@ -58,11 +69,12 @@ flowchart LR
 |---|---|
 | Bot-Kern mit System-Prompt v1, JSON-Ausgabe, Status-Prüfung, Fallback | ✅ läuft, 5 Dialog- und 4 Fehlerpfad-Tests ([Protokoll](tests/handtests-prompt-v1.md)) |
 | Chat-Kanal mit Fehlerbehandlung | ✅ läuft |
-| Übergabe-Webhook (strukturiertes JSON an das Contact Center) | 🟡 als Nächstes |
+| Übergabe-Webhook mit Header Auth, Speicherung in einer Data Table | ✅ läuft, 3 Webhook- und 3 Übergabe-Tests ([Protokoll](tests/handtests-handover.md)) |
 | PII-Maskierung (Telefon, IBAN) vor dem LLM, Demaskierung vor der Übergabe | ⚪ geplant |
 | Evaluation: Testfälle, LLM-as-a-Judge, Vergleich Prompt v1 gegen v2 | ⚪ geplant |
 
-**Später:** Gesprächsverlauf in einer Datenbank statt im Arbeitsspeicher · Inhaltsprüfung der Slots
+**Später:** Queue mit Wiederholung und Alarm für gescheiterte Übergaben · Kanal als Input an den Bot Core ·
+Gesprächsverlauf in einer Datenbank statt im Arbeitsspeicher · Inhaltsprüfung der Slots
 (Policennummer-Format, Datum nicht in der Zukunft) · weitere Schadenarten über einen Intent Router ·
 Modellvergleich Haiku gegen Sonnet · Voice.
 
@@ -80,8 +92,13 @@ Modellvergleich Haiku gegen Sonnet · Voice.
   Kunden war dabei korrekt, der Fehler steckte nur in den Daten für den Fachbereich.
 - **Guardrails brauchen konkrete Kriterien.** «Notfall» stand nur als Wort im Prompt. Ein vom Sturm
   zerbrochenes Fenster wurde darum nicht als Notfall erkannt.
+- **Fehlertoleranz kann Fehler verstecken.** Der Aufruf des Webhooks lief mit «Continue on Error», damit der
+  Kunde keine Fehlermeldung sieht. Beim ersten Test war der Empfänger nicht aktiv: Der Kunde las «Ich leite
+  Ihr Anliegen weiter», angekommen ist nichts, und niemand hat es bemerkt. Jetzt erfährt der Kunde es, und
+  jede Execution zeigt `uebergabe_gesendet`.
 
-Alle Dialog- und Fehlerpfad-Tests mit Ergebnissen: [Handtests Prompt v1](tests/handtests-prompt-v1.md).
+Alle Dialog- und Fehlerpfad-Tests mit Ergebnissen: [Handtests Prompt v1](tests/handtests-prompt-v1.md) und
+[Handtests Übergabe](tests/handtests-handover.md).
 Diese Fälle werden die Grundlage der automatischen Evaluation.
 
 ## Setup
@@ -93,12 +110,19 @@ docker compose up -d
 ```
 
 1. n8n öffnen: http://localhost:5679 und ein lokales Owner-Konto anlegen.
-2. Credential **Anthropic** anlegen (API-Key nur dort eingeben, nie in Dateien).
-3. `workflows/bot-core.json` und danach `workflows/chat.json` importieren.
-4. Im Bot Core beim Node **Claude Model** die eigene Credential auswählen.
-5. Im Chat beim Node **Call Bot Core** den importierten Bot Core neu auswählen (die Workflow-ID ändert sich
-   beim Import).
-6. Im Workflow Chat auf **Open chat** klicken.
+2. Credentials anlegen, Secrets nur dort eingeben, nie in Dateien:
+   - **Anthropic** mit dem API-Key
+   - **Header Auth** mit Name `X-Handover-Token` und einem zufälligen Wert, zum Beispiel aus
+     `openssl rand -hex 32`
+3. Data Table `handovers` anlegen mit den String-Spalten `typ`, `session_id`, `grund`, `slots`, `zeitpunkt`,
+   `kanal`.
+4. `workflows/handover.json`, `workflows/bot-core.json` und `workflows/chat.json` importieren.
+5. Credentials und Verweise neu auswählen, weil sich IDs beim Import ändern:
+   - Handover: **Handover Webhook** (Header Auth) und **Store Handover** (Data Table)
+   - Bot Core: **Claude Model** (Anthropic) und **Send Handover** (Header Auth)
+   - Chat: **Call Bot Core** (den importierten Bot Core)
+6. Den Workflow **Handover** publizieren. Ohne das antwortet der Webhook mit 404.
+7. Im Workflow Chat auf **Open chat** klicken.
 
 ## Repo-Struktur
 
